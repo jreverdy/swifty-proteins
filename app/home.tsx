@@ -1,27 +1,37 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, FlatList, TextInput, StyleSheet } from "react-native";
+import { View, Text, FlatList, TextInput, StyleSheet, Platform } from "react-native";
 import { Asset } from "expo-asset";
-import { File } from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 
 
 export default function LigandList() {
   const [ligands, setLigands] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     loadLigands();
   }, []);
 
   async function loadLigands() {
-    const asset = Asset.fromModule(require("../assets/ligands.txt"));
-    await asset.downloadAsync();
+    try {
+      // Metro needs require() for bundled text assets.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const asset = Asset.fromModule(require("../assets/ligands.txt"));
+      await asset.downloadAsync();
 
-    const fileUri = asset.localUri || asset.uri;
-    const file = new File(fileUri);
-    const content = await file.text();
+      const fileUri = asset.localUri || asset.uri;
+      const content = Platform.OS === "web"
+        ? await fetch(asset.uri).then(response => response.text())
+        : await FileSystem.readAsStringAsync(fileUri);
 
-    const lines = content.split("\n").map(line => line.trim()).filter(Boolean);
-    setLigands(lines);
+      const lines = content.split("\n").map(line => line.trim()).filter(Boolean);
+      setLigands(lines);
+      setError("");
+    } catch (loadError) {
+      console.error(loadError);
+      setError("Impossible de charger la liste des ligands.");
+    }
   }
 
   const filteredLigands = ligands.filter(ligand =>
@@ -37,6 +47,7 @@ export default function LigandList() {
         onChangeText={setSearch}
         style={styles.input}
         />
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <FlatList
         data={filteredLigands}
@@ -70,4 +81,9 @@ const styles = StyleSheet.create({
         padding: 12,
         borderBottomWidth: 1,
   },
+    error: {
+        color: "#b00020",
+        marginBottom: 12,
+        textAlign: "center",
+    },
 });

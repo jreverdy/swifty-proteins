@@ -1,39 +1,85 @@
-import React from "react";
-import * as SecureStore from "expo-secure-store";
-import { View, TextInput, Button, StyleSheet, Alert, Text, TouchableOpacity } from "react-native";
-import { useState } from "react";
-import { getUser, getUserKey, hashPassword } from "@/tools/user";
+import React, { useState } from "react";
+import { View, TextInput, StyleSheet, Alert, Text, TouchableOpacity } from "react-native";
+import {
+    getUser,
+    getUserKey,
+    isBiometricAvailable,
+    requestBiometricRegistration,
+    saveUser,
+    validatePassword,
+} from "@/tools/user";
 import { useRouter } from "expo-router";
 import { isAlphanumeric } from "@/tools/utils";
 
 export default function SignupScreen() {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
+    const [enableBiometrics, setEnableBiometrics] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [message, setMessage] = useState("");
     const router = useRouter();
 
+    function showMessage(title: string, details?: string) {
+        const text = details ? `${title} ${details}` : title;
+        setMessage(text);
+        Alert.alert(title, details);
+    }
+
     async function handleSignup() {
-        if (isAlphanumeric(username) === false){
-            Alert.alert("Le nom d'utilisateur ne doit comprendre que des caractères alphanumériques.");
+        const normalizedUsername = username.trim();
+        const passwordError = validatePassword(password);
+        setMessage("");
+
+        if (isSubmitting) {
             return;
         }
-        const key = getUserKey(username)
-        const existingUser = await getUser(key);
-        if (existingUser) {
-            Alert.alert("Un compte existe déjà. Veuillez vous connecter.");
+        if (isAlphanumeric(normalizedUsername) === false){
+            showMessage("Le nom d'utilisateur ne doit comprendre que des caractères alphanumériques.");
             return;
         }
-        const passwordHash = await hashPassword(password);
-        await SecureStore.setItemAsync(
-            key,
-            JSON.stringify({ username, passwordHash })
-        );
-        // not working
-        redirectToLogin();
-        Alert.alert("Compte enregistré avec succès !");
+        if (passwordError) {
+            showMessage(passwordError);
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            const key = getUserKey(normalizedUsername)
+            const existingUser = await getUser(key);
+            if (existingUser) {
+                showMessage("Un compte existe déjà. Veuillez vous connecter.");
+                return;
+            }
+            await saveUser(normalizedUsername, password);
+
+            if (enableBiometrics) {
+                const biometricAvailable = await isBiometricAvailable();
+                if (!biometricAvailable) {
+                    showMessage("Biométrie indisponible", "Configurez Face ID, Touch ID ou une empreinte sur votre appareil.");
+                    router.replace("/login");
+                    return;
+                }
+
+                const biometricRegistered = await requestBiometricRegistration(normalizedUsername);
+                if (!biometricRegistered) {
+                    showMessage("Biométrie non activée", "Votre compte a été créé, mais la biométrie n'a pas été enregistrée.");
+                    router.replace("/login");
+                    return;
+                }
+            }
+
+            setMessage("Compte enregistré avec succès !");
+            router.replace("/login");
+        } catch (error) {
+            console.error(error);
+            showMessage("Inscription impossible", "Veuillez réessayer.");
+        } finally {
+            setIsSubmitting(false);
+        }
     }
 
     function redirectToLogin() {
-        router.push("/login");
+        router.replace("/login");
     }
 
  return (
@@ -56,9 +102,18 @@ export default function SignupScreen() {
         autoCapitalize="none"
         placeholderTextColor="#666"
       />
-      <TouchableOpacity style={styles.button} onPress={handleSignup}>
-          <Text style={styles.buttonText}>S'inscrire</Text>
+      <TouchableOpacity
+        style={[styles.toggleButton, enableBiometrics && styles.toggleButtonActive]}
+        onPress={() => setEnableBiometrics((enabled) => !enabled)}
+      >
+          <Text style={styles.buttonText}>
+            {enableBiometrics ? "Biométrie activée" : "Activer la biométrie"}
+          </Text>
       </TouchableOpacity>
+      <TouchableOpacity style={styles.button} onPress={handleSignup}>
+          <Text style={styles.buttonText}>{isSubmitting ? "Création..." : "S'inscrire"}</Text>
+      </TouchableOpacity>
+      {message ? <Text style={styles.message}>{message}</Text> : null}
       <TouchableOpacity style={styles.buttonSecondary} onPress={redirectToLogin}>
           <Text style={styles.buttonText}>Se connecter</Text>
       </TouchableOpacity>
@@ -102,6 +157,21 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     },
 
+    toggleButton: {
+    width: "100%",
+    maxWidth: 200,
+    height: 48,
+    backgroundColor: "#535e61",
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+    },
+
+    toggleButtonActive: {
+    backgroundColor: "#2e7d32",
+    },
+
     buttonSecondary: {
     width: "100%",
     maxWidth: 200,
@@ -116,5 +186,12 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  message: {
+    width: "100%",
+    maxWidth: 400,
+    color: "#ffddd2",
+    textAlign: "center",
+    marginBottom: 12,
   },
 });

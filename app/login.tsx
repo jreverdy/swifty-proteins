@@ -1,36 +1,122 @@
-import React, { useState } from "react";
-import { View, TextInput, Button, StyleSheet, Alert, Text, TouchableOpacity } from "react-native";
-import { getUser, getUserKey, hashPassword } from "@/tools/user";
+import React, { useEffect, useState } from "react";
+import { View, TextInput, StyleSheet, Alert, Text, TouchableOpacity } from "react-native";
+import {
+    getBiometricAuthenticatedUser,
+    getUser,
+    getUserKey,
+    isBiometricAvailable,
+    verifyBiometricAuthenticatedUser,
+    verifyPassword,
+} from "@/tools/user";
 import { useRouter } from "expo-router";
 import { isAlphanumeric } from "@/tools/utils";
-
 
 export default function LoginScreen() {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
+    const [biometricAvailable, setBiometricAvailable] = useState(false);
+    const [biometricUser, setBiometricUser] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [message, setMessage] = useState("");
     const router = useRouter();
 
+    useEffect(() => {
+        async function checkBiometricAvailability() {
+            const [deviceBiometricAvailable, storedBiometricUser] = await Promise.all([
+                isBiometricAvailable(),
+                getBiometricAuthenticatedUser(),
+            ]);
+            const storedUser = storedBiometricUser
+                ? await getUser(getUserKey(storedBiometricUser))
+                : null;
+
+            setBiometricUser(storedUser?.username ?? null);
+            setBiometricAvailable(deviceBiometricAvailable);
+        }
+
+        checkBiometricAvailability();
+    }, []);
+
+    function showMessage(title: string, details?: string) {
+        const text = details ? `${title} ${details}` : title;
+        setMessage(text);
+        Alert.alert(title, details);
+    }
+
     async function handleLogin() {
-        if (isAlphanumeric(username) === false){
-            Alert.alert("Le nom d'utilisateur ne doit comprendre que des caractères alphanumériques.");
+        const normalizedUsername = username.trim();
+        setMessage("");
+
+        if (isSubmitting) {
+            return;
+        }
+        if (isAlphanumeric(normalizedUsername) === false){
+            showMessage("Le nom d'utilisateur ne doit comprendre que des caractères alphanumériques.");
+            return;
+        }
+        if (!password) {
+            showMessage("Veuillez saisir votre mot de passe.");
             return;
         }
 
-        const key = getUserKey(username)
-        const storedUser = await getUser(key);
-        console.log("storeUser", storedUser)
+        setIsSubmitting(true);
+        try {
+            const key = getUserKey(normalizedUsername)
+            const storedUser = await getUser(key);
+            if (!storedUser) {
+                showMessage("Identifiants incorrects");
+                return;
+            }
+
+            const isPasswordValid = await verifyPassword(password, storedUser.passwordHash);
+
+            if (!isPasswordValid) {
+                showMessage("Mot de passe incorrect");
+                return;
+            }
+            router.replace("/home");
+        } catch (error) {
+            console.error(error);
+            showMessage("Connexion impossible", "Veuillez réessayer.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    }
+
+    async function handleBiometricLogin() {
+        const requestedUsername = username.trim();
+        const targetUsername = requestedUsername || biometricUser;
+
+        if (!targetUsername) {
+            showMessage("Connexion biométrique indisponible", "Saisissez le compte associé à la biométrie.");
+            return;
+        }
+
+        if (isAlphanumeric(targetUsername) === false) {
+            showMessage("Le nom d'utilisateur ne doit comprendre que des caractères alphanumériques.");
+            return;
+        }
+
+        const storedUser = await getUser(getUserKey(targetUsername));
         if (!storedUser) {
-            Alert.alert("Identifiants incorrects");
+            showMessage("Compte introuvable");
             return;
         }
 
-        const passwordHash = await hashPassword(password);
-
-        if (storedUser.passwordHash !== passwordHash) {
-            Alert.alert("Mot de passe incorrect");
-            return;
+        try {
+            const isBiometricUserValid = await verifyBiometricAuthenticatedUser(storedUser.username);
+            if (!isBiometricUserValid) {
+                showMessage("Authentification échouée", "La biométrie n'est plus valide pour ce compte.");
+                return;
+            }
+            router.replace("/home");
+        } catch (error) {
+            console.error(error);
+            showMessage(
+                "Authentification échouée",
+                "Réessayez ou connectez-vous avec votre mot de passe."
+            );
         }
-        router.replace("/home");
     }
 
     function redirectToSignup() {
@@ -58,10 +144,16 @@ export default function LoginScreen() {
                 placeholderTextColor="#666"
             />
             <TouchableOpacity style={styles.button} onPress={handleLogin}>
-                <Text style={styles.buttonText}>Se connecter</Text>
+                <Text style={styles.buttonText}>{isSubmitting ? "Connexion..." : "Se connecter"}</Text>
             </TouchableOpacity>
+            {biometricAvailable && (
+                <TouchableOpacity style={styles.buttonBiometric} onPress={handleBiometricLogin}>
+                    <Text style={styles.buttonText}>Biométrie {biometricUser ? `(${biometricUser})` : ""}</Text>
+                </TouchableOpacity>
+            )}
+            {message ? <Text style={styles.message}>{message}</Text> : null}
             <TouchableOpacity style={styles.buttonSecondary} onPress={redirectToSignup}>
-                <Text style={styles.buttonText}>S'inscrire</Text>
+                <Text style={styles.buttonText}>Créer un compte</Text>
             </TouchableOpacity>
         </View>
     );
@@ -103,6 +195,17 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         },
 
+        buttonBiometric: {
+        width: "100%",
+        maxWidth: 200,
+        height: 48,
+        backgroundColor: "#2e7d32",
+        borderRadius: 8,
+        justifyContent: "center",
+        alignItems: "center",
+        marginBottom: 12,
+        },
+
         buttonSecondary: {
         width: "100%",
         maxWidth: 200,
@@ -117,6 +220,14 @@ const styles = StyleSheet.create({
         color: "#fff",
         fontSize: 16,
         fontWeight: "bold",
+    },
+
+        message: {
+        width: "100%",
+        maxWidth: 400,
+        color: "#ffddd2",
+        textAlign: "center",
+        marginBottom: 12,
     },
 
 });

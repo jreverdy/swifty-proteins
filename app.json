@@ -41,6 +41,12 @@
         }
       ],
       "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Autoriser Swifty Proteins à utiliser Face ID pour vous connecter."
+        }
+      ],
       "expo-asset"
     ],
     "experiments": {
