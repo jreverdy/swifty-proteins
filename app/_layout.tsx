@@ -26,6 +26,7 @@ export default function RootLayout() {
       <Stack.Screen name="login" />
       <Stack.Screen name="signup" />
       <Stack.Screen name="home" />
+      <Stack.Screen name="protein" />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

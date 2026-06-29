@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, TextInput, StyleSheet, Alert, Text, TouchableOpacity } from "react-native";
+import { View, TextInput, StyleSheet, Alert, Text, TouchableOpacity, Platform } from "react-native";
 import {
     getUser,
     getUserKey,
@@ -22,7 +22,10 @@ export default function SignupScreen() {
     function showMessage(title: string, details?: string) {
         const text = details ? `${title} ${details}` : title;
         setMessage(text);
-        Alert.alert(title, details);
+        // Alert.alert maps to a blocking window.alert on web; the inline message covers it there.
+        if (Platform.OS !== "web") {
+            Alert.alert(title, details);
+        }
     }
 
     async function handleSignup() {
