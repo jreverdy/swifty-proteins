@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View, TextInput, StyleSheet, Alert, Text, TouchableOpacity, Platform } from "react-native";
 import {
     getUser,
@@ -15,6 +15,7 @@ export default function SignupScreen() {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [enableBiometrics, setEnableBiometrics] = useState(false);
+    const [isBiometricsAvailable, setIsBiometricsAvailable] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [message, setMessage] = useState("");
     const router = useRouter();
@@ -28,9 +29,21 @@ export default function SignupScreen() {
         }
     }
 
+    useEffect(() => {
+        async function check() {
+            const available = await isBiometricAvailable();
+            setIsBiometricsAvailable(available);
+        }
+
+        check();
+        }, []);
+        
+
     async function handleSignup() {
         const normalizedUsername = username.trim();
         const passwordError = validatePassword(password);
+
+        
         setMessage("");
 
         if (isSubmitting) {
@@ -45,6 +58,7 @@ export default function SignupScreen() {
             return;
         }
 
+
         setIsSubmitting(true);
         try {
             const key = getUserKey(normalizedUsername)
@@ -57,8 +71,9 @@ export default function SignupScreen() {
 
             if (enableBiometrics) {
                 const biometricAvailable = await isBiometricAvailable();
+                console.log("Biometric : %s", biometricAvailable);
                 if (!biometricAvailable) {
-                    showMessage("Biométrie indisponible", "Configurez Face ID, Touch ID ou une empreinte sur votre appareil.");
+                    showMessage("Biométrie indisponible", "Configurez une empreinte sur votre appareil.");
                     router.replace("/login");
                     return;
                 }
@@ -87,39 +102,44 @@ export default function SignupScreen() {
 
  return (
     <View style={styles.container}>
-      <Text style={styles.title}>Inscription</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Username"
-        value={username}
-        onChangeText={setUsername}
-        autoCapitalize="none"
-        placeholderTextColor="#666"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        autoCapitalize="none"
-        placeholderTextColor="#666"
-      />
-      <TouchableOpacity
-        style={[styles.toggleButton, enableBiometrics && styles.toggleButtonActive]}
-        onPress={() => setEnableBiometrics((enabled) => !enabled)}
-      >
-          <Text style={styles.buttonText}>
+        <Text style={styles.title}>Inscription</Text>
+            <TextInput
+                style={styles.input}
+                placeholder="Username"
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+                placeholderTextColor="#666"
+            />
+        <TextInput
+            style={styles.input}
+            placeholder="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoCapitalize="none"
+            placeholderTextColor="#666"
+        />
+        {isBiometricsAvailable && (
+        <TouchableOpacity
+            style={[
+            styles.toggleButton,
+            enableBiometrics && styles.toggleButtonActive
+            ]}
+            onPress={() => setEnableBiometrics((enabled) => !enabled)}
+        >
+            <Text style={styles.buttonText}>
             {enableBiometrics ? "Biométrie activée" : "Activer la biométrie"}
-          </Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.button} onPress={handleSignup}>
-          <Text style={styles.buttonText}>{isSubmitting ? "Création..." : "S'inscrire"}</Text>
-      </TouchableOpacity>
-      {message ? <Text style={styles.message}>{message}</Text> : null}
-      <TouchableOpacity style={styles.buttonSecondary} onPress={redirectToLogin}>
-          <Text style={styles.buttonText}>Se connecter</Text>
-      </TouchableOpacity>
+            </Text>
+        </TouchableOpacity>
+        )}
+        <TouchableOpacity style={styles.button} onPress={handleSignup}>
+            <Text style={styles.buttonText}>{isSubmitting ? "Création..." : "S'inscrire"}</Text>
+        </TouchableOpacity>
+        {message ? <Text style={styles.message}>{message}</Text> : null}
+        <TouchableOpacity style={styles.buttonSecondary} onPress={redirectToLogin}>
+            <Text style={styles.buttonText}>Se connecter</Text>
+        </TouchableOpacity>
     </View>
   );
 }
